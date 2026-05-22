@@ -107,6 +107,7 @@
     }
 
     #backgroundFit,
+    #backgroundGallery,
     #stampSelect,
     #reactionSelect {
       height: 34px;
@@ -403,16 +404,19 @@
     <button id="redoAction" type="button">Redo</button>
     <button id="paintToggle" type="button">Paint</button>
     <button id="eraserToggle" type="button">Eraser</button>
-    <button id="imageEraserToggle" type="button">Erase Image</button>
+    <button id="imageEraserToggle" type="button">Erase All</button>
     <button id="laserToggle" type="button">Laser</button>
     <input id="brushColor" type="color" value="#00d084" aria-label="Brush color" />
-    <input id="brushSize" type="range" min="4" max="80" value="16" aria-label="Brush size" />
+    <input id="brushSize" type="range" min="4" max="160" value="16" aria-label="Brush size" />
     <span id="brushSizeValue">16px</span>
     <select id="backgroundFit" aria-label="Background fit">
       <option value="cover">Cover</option>
       <option value="contain">Contain</option>
       <option value="stretch">Stretch</option>
       <option value="center">Center</option>
+    </select>
+    <select id="backgroundGallery" aria-label="Background gallery">
+      <option value="">Backgrounds</option>
     </select>
     <select id="stampSelect" aria-label="Stamp">
       <option value="">Stamp</option>

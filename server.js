@@ -21,8 +21,10 @@ let backgroundImage = null;
 let backgroundEraseStrokes = [];
 let backgroundFit = "cover";
 let stamps = [];
+let backgroundGallery = [];
 const MAX_PAINT_STROKES = 1000;
 const MAX_BACKGROUND_ERASE_STROKES = 1000;
+const MAX_BACKGROUND_GALLERY_ITEMS = 12;
 const MAX_STAMPS = 500;
 const MAX_BACKGROUND_IMAGE_LENGTH = 4500000;
 
@@ -61,7 +63,8 @@ io.on("connection", (socket) => {
     image: backgroundImage,
     eraseStrokes: backgroundEraseStrokes,
     fit: backgroundFit,
-    stamps
+    stamps,
+    gallery: backgroundGallery
   });
 
   // Cursor movement
@@ -129,6 +132,13 @@ io.on("connection", (socket) => {
       io.emit("removeBackgroundEraseStroke", action.id);
     }
 
+    if (action.type === "allErase") {
+      backgroundEraseStrokes = backgroundEraseStrokes.filter(stroke => !(stroke.id === action.id && stroke.userId === socket.id));
+      paintStrokes = paintStrokes.filter(stroke => !(stroke.id === action.paintId && stroke.userId === socket.id));
+      io.emit("removeBackgroundEraseStroke", action.id);
+      io.emit("removePaintStroke", action.paintId);
+    }
+
     if (action.type === "stamp") {
       stamps = stamps.filter(stamp => !(stamp.id === action.id && stamp.userId === socket.id));
       io.emit("removeStamp", action.id);
@@ -156,6 +166,25 @@ io.on("connection", (socket) => {
       io.emit("backgroundEraseStroke", stroke);
     }
 
+    if (action.type === "allErase" && isValidBackgroundEraseStroke(action.item)) {
+      const backgroundStroke = {
+        ...action.item,
+        userId: socket.id
+      };
+      const paintStroke = {
+        ...action.item,
+        id: action.item.paintId || `${backgroundStroke.id}-paint`,
+        paintId: undefined,
+        userId: socket.id,
+        color: "#000000",
+        tool: "eraser"
+      };
+      backgroundEraseStrokes.push(backgroundStroke);
+      paintStrokes.push(paintStroke);
+      io.emit("backgroundEraseStroke", backgroundStroke);
+      io.emit("paintStroke", paintStroke);
+    }
+
     if (action.type === "stamp" && isValidStamp(action.item)) {
       const stamp = {
         ...action.item,
@@ -170,11 +199,29 @@ io.on("connection", (socket) => {
     if (!players[socket.id] || !isValidBackgroundImage(image)) return;
     backgroundImage = image;
     backgroundEraseStrokes = [];
+    addBackgroundToGallery(image);
     io.emit("backgroundState", {
       image: backgroundImage,
       eraseStrokes: backgroundEraseStrokes,
       fit: backgroundFit,
-      stamps
+      stamps,
+      gallery: backgroundGallery
+    });
+  });
+
+  socket.on("selectBackgroundFromGallery", (id) => {
+    if (!players[socket.id] || typeof id !== "string") return;
+    const galleryItem = backgroundGallery.find(item => item.id === id);
+    if (!galleryItem) return;
+
+    backgroundImage = galleryItem.image;
+    backgroundEraseStrokes = [];
+    io.emit("backgroundState", {
+      image: backgroundImage,
+      eraseStrokes: backgroundEraseStrokes,
+      fit: backgroundFit,
+      stamps,
+      gallery: backgroundGallery
     });
   });
 
@@ -186,7 +233,8 @@ io.on("connection", (socket) => {
       image: backgroundImage,
       eraseStrokes: backgroundEraseStrokes,
       fit: backgroundFit,
-      stamps
+      stamps,
+      gallery: backgroundGallery
     });
   });
 
@@ -282,11 +330,21 @@ function isValidColor(color) {
   return typeof color === "string" && /^#[0-9a-fA-F]{6}$/.test(color);
 }
 
+function addBackgroundToGallery(image) {
+  backgroundGallery = backgroundGallery.filter(item => item.image !== image);
+  backgroundGallery.unshift({
+    id: `bg-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    image,
+    addedAt: Date.now()
+  });
+  backgroundGallery = backgroundGallery.slice(0, MAX_BACKGROUND_GALLERY_ITEMS);
+}
+
 function isValidStroke(stroke) {
   if (!stroke || !Array.isArray(stroke.points)) return false;
   if (stroke.points.length < 2 || stroke.points.length > 500) return false;
   if (typeof stroke.color !== "string" || !/^#[0-9a-fA-F]{6}$/.test(stroke.color)) return false;
-  if (typeof stroke.size !== "number" || stroke.size < 1 || stroke.size > 80) return false;
+  if (typeof stroke.size !== "number" || stroke.size < 1 || stroke.size > 160) return false;
   if (stroke.tool !== "brush" && stroke.tool !== "eraser") return false;
 
   return stroke.points.every(point => (
@@ -301,7 +359,7 @@ function isValidStroke(stroke) {
 function isValidBackgroundEraseStroke(stroke) {
   if (!stroke || !Array.isArray(stroke.points)) return false;
   if (stroke.points.length < 2 || stroke.points.length > 500) return false;
-  if (typeof stroke.size !== "number" || stroke.size < 1 || stroke.size > 120) return false;
+  if (typeof stroke.size !== "number" || stroke.size < 1 || stroke.size > 160) return false;
 
   return stroke.points.every(point => (
     point &&

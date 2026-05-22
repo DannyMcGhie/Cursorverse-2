@@ -16,6 +16,7 @@ const brushSizeValue = document.getElementById("brushSizeValue");
 const undoActionButton = document.getElementById("undoAction");
 const redoActionButton = document.getElementById("redoAction");
 const backgroundFitSelect = document.getElementById("backgroundFit");
+const backgroundGallerySelect = document.getElementById("backgroundGallery");
 const stampSelect = document.getElementById("stampSelect");
 const reactionSelect = document.getElementById("reactionSelect");
 const importBackgroundButton = document.getElementById("importBackground");
@@ -38,6 +39,7 @@ let backgroundImageSource = null;
 let backgroundImageElement = null;
 let backgroundEraseHistory = [];
 let backgroundFit = "cover";
+let backgroundGallery = [];
 let stampHistory = [];
 let undoStack = [];
 let redoStack = [];
@@ -170,6 +172,15 @@ function drawBackgroundEraseStroke(stroke) {
   backgroundContext.restore();
 }
 
+function drawAllEraseStroke(stroke) {
+  drawBackgroundEraseStroke(stroke);
+  drawStroke({
+    ...stroke,
+    color: "#000000",
+    tool: "eraser"
+  });
+}
+
 function setPaintMode(enabled) {
   paintMode = enabled;
   paintToggle.classList.toggle("active", paintMode);
@@ -179,7 +190,7 @@ function setPaintMode(enabled) {
 function setPaintTool(tool) {
   paintTool = tool;
   eraserToggle.classList.toggle("active", paintTool === "eraser");
-  imageEraserToggle.classList.toggle("active", paintTool === "imageEraser");
+  imageEraserToggle.classList.toggle("active", paintTool === "allEraser");
 }
 
 function setLaserMode(enabled) {
@@ -191,6 +202,16 @@ function setLaserMode(enabled) {
 function rememberAction(type, item) {
   undoStack.push({ type, item });
   redoStack = [];
+}
+
+function renderBackgroundGallery() {
+  backgroundGallerySelect.innerHTML = '<option value="">Backgrounds</option>';
+  backgroundGallery.forEach((item, index) => {
+    const option = document.createElement("option");
+    option.value = item.id;
+    option.innerText = `Background ${index + 1}`;
+    backgroundGallerySelect.appendChild(option);
+  });
 }
 
 function renderStamps() {
@@ -298,7 +319,7 @@ eraserToggle.addEventListener("click", () => {
 });
 imageEraserToggle.addEventListener("click", () => {
   setPaintMode(true);
-  setPaintTool(paintTool === "imageEraser" ? "brush" : "imageEraser");
+  setPaintTool(paintTool === "allEraser" ? "brush" : "allEraser");
 });
 laserToggle.addEventListener("click", () => setLaserMode(!laserMode));
 
@@ -306,10 +327,12 @@ undoActionButton.addEventListener("click", () => {
   const action = undoStack.pop();
   if (!action) return;
   redoStack.push(action);
-  socket.emit("undoAction", {
+  const undoPayload = {
     type: action.type,
     id: action.item.id
-  });
+  };
+  if (action.type === "allErase") undoPayload.paintId = action.item.paintId;
+  socket.emit("undoAction", undoPayload);
 });
 
 redoActionButton.addEventListener("click", () => {
@@ -320,6 +343,12 @@ redoActionButton.addEventListener("click", () => {
 
 backgroundFitSelect.addEventListener("change", () => {
   socket.emit("setBackgroundFit", backgroundFitSelect.value);
+});
+
+backgroundGallerySelect.addEventListener("change", () => {
+  if (!backgroundGallerySelect.value) return;
+  socket.emit("selectBackgroundFromGallery", backgroundGallerySelect.value);
+  backgroundGallerySelect.value = "";
 });
 
 stampSelect.addEventListener("change", () => {
@@ -529,7 +558,7 @@ document.addEventListener("keydown", (e) => {
   }
   if (e.key.toLowerCase() === "i") {
     setPaintMode(true);
-    setPaintTool(paintTool === "imageEraser" ? "brush" : "imageEraser");
+    setPaintTool(paintTool === "allEraser" ? "brush" : "allEraser");
   }
 });
 
@@ -595,8 +624,8 @@ document.addEventListener("mousemove", (e) => {
       points: currentStroke.points.slice(-2)
     };
 
-    if (currentStroke.tool === "imageEraser") {
-      drawBackgroundEraseStroke(segment);
+    if (currentStroke.tool === "allEraser") {
+      drawAllEraseStroke(segment);
     } else {
       drawStroke(segment);
     }
@@ -632,12 +661,17 @@ document.addEventListener("mouseup", () => {
 
   isDrawing = false;
   if (currentStroke.points.length > 1) {
-    if (currentStroke.tool === "imageEraser") {
-      const backgroundStroke = {
+    if (currentStroke.tool === "allEraser") {
+      const allEraseStroke = {
+        id: `${socket.id}-all-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        paintId: `${socket.id}-all-paint-${Date.now()}-${Math.random().toString(16).slice(2)}`,
         size: currentStroke.size,
         points: currentStroke.points
       };
-      socket.emit("backgroundEraseStroke", backgroundStroke);
+      socket.emit("redoAction", {
+        type: "allErase",
+        item: allEraseStroke
+      });
     } else {
       socket.emit("paintStroke", currentStroke);
     }
@@ -712,7 +746,9 @@ socket.on("paintHistory", (strokes) => {
 socket.on("paintStroke", (stroke) => {
   paintHistory.push(stroke);
   if (stroke.userId === socket.id) {
-    rememberAction("paint", stroke);
+    if (stroke.tool !== "eraser" || !stroke.id.includes("-all-paint-")) {
+      rememberAction("paint", stroke);
+    }
     return;
   }
   drawStroke(stroke);
@@ -729,8 +765,10 @@ socket.on("backgroundState", async (state) => {
   backgroundImageSource = state?.image || null;
   backgroundEraseHistory = Array.isArray(state?.eraseStrokes) ? state.eraseStrokes : [];
   backgroundFit = state?.fit || "cover";
+  backgroundGallery = Array.isArray(state?.gallery) ? state.gallery : backgroundGallery;
   stampHistory = Array.isArray(state?.stamps) ? state.stamps : stampHistory;
   backgroundFitSelect.value = backgroundFit;
+  renderBackgroundGallery();
   renderStamps();
 
   if (!backgroundImageSource) {
@@ -751,7 +789,11 @@ socket.on("backgroundState", async (state) => {
 socket.on("backgroundEraseStroke", (stroke) => {
   backgroundEraseHistory.push(stroke);
   if (stroke.userId === socket.id) {
-    rememberAction("backgroundErase", stroke);
+    if (stroke.paintId) {
+      rememberAction("allErase", stroke);
+    } else {
+      rememberAction("backgroundErase", stroke);
+    }
     return;
   }
   drawBackgroundEraseStroke(stroke);
