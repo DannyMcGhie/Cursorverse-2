@@ -12,6 +12,11 @@
       font-family: 'Poppins', sans-serif;
     }
 
+    body.showSystemCursor,
+    body.showSystemCursor * {
+      cursor: auto !important;
+    }
+
     body {
       margin: 0;
       overflow: hidden;
@@ -387,7 +392,7 @@
     }
   </style>
 </head>
-<body>
+<body class="showSystemCursor">
   <div id="playerCount">Players online: 0</div>
 
   <canvas id="backgroundCanvas"></canvas>

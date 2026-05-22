@@ -252,6 +252,7 @@ function joinCursorverse(name, color) {
   localStorage.setItem("cursorverseUsername", username);
   localStorage.setItem("cursorverseColor", usernameColor);
   document.getElementById("usernameOverlay").style.display = "none";
+  document.body.classList.remove("showSystemCursor");
   socket.emit("setUsername", { name: username, color: usernameColor });
   socket.emit("setSkin", cursorSkin);
   if (socket.id && !cursors[socket.id]) {
