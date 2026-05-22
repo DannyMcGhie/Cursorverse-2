@@ -35,17 +35,19 @@ io.on("connection", (socket) => {
     color: "#ffeb3b", 
     skin: "cursors/cursor.png" // ✅ fixed path
   };
+  emitPlayers();
 
   // Username set by client
   socket.on("setUsername", (data) => {
     players[socket.id].username = data.name;
     players[socket.id].color = data.color || "#ffeb3b";
-    io.emit("playerCount", Object.keys(players).length);
+    emitPlayers();
   });
 
   // Skin set by client
   socket.on("setSkin", (skin) => {
     if (players[socket.id]) players[socket.id].skin = skin;
+    emitPlayers();
   });
 
   // Send existing painting to new clients
@@ -253,12 +255,17 @@ io.on("connection", (socket) => {
     console.log("Client disconnected");
     delete players[socket.id];
     io.emit("removeCursor", socket.id);
-    io.emit("playerCount", Object.keys(players).length);
+    emitPlayers();
   });
 
   // Send initial player count
-  io.emit("playerCount", Object.keys(players).length);
+  emitPlayers();
 });
+
+function emitPlayers() {
+  io.emit("players", players);
+  io.emit("playerCount", Object.keys(players).length);
+}
 
 function isValidStroke(stroke) {
   if (!stroke || !Array.isArray(stroke.points)) return false;

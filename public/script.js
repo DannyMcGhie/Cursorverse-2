@@ -616,6 +616,19 @@ socket.on("playerCount", (count) => {
   document.getElementById("playerCount").innerText = `Players online: ${count}`;
 });
 
+socket.on("players", (activePlayers) => {
+  const activeIds = new Set(Object.keys(activePlayers || {}));
+
+  Object.keys(cursors).forEach((id) => {
+    if (!activeIds.has(id)) removeCursor(id);
+  });
+
+  Object.entries(activePlayers || {}).forEach(([id, player]) => {
+    if (id === socket.id) return;
+    if (!cursors[id]) createCursor(id, player.username, player.color, player.skin);
+  });
+});
+
 // Chat messages
 socket.on("chatMessage", ({ username, message, color }) => {
   const msg = document.createElement("div");
