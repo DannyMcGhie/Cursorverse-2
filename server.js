@@ -35,12 +35,17 @@ io.on("connection", (socket) => {
     color: "#ffeb3b", 
     skin: "cursors/cursor.png" // ✅ fixed path
   };
+  delete players[socket.id];
   emitPlayers();
 
   // Username set by client
   socket.on("setUsername", (data) => {
-    players[socket.id].username = data.name;
-    players[socket.id].color = data.color || "#ffeb3b";
+    const existingPlayer = players[socket.id];
+    players[socket.id] = {
+      username: sanitizeName(data.name),
+      color: isValidColor(data.color) ? data.color : "#ffeb3b",
+      skin: existingPlayer?.skin || "cursors/cursor.png"
+    };
     emitPlayers();
   });
 
@@ -62,7 +67,7 @@ io.on("connection", (socket) => {
   // Cursor movement
   socket.on("cursorMove", (data) => {
     if (players[socket.id]) {
-      io.emit("cursorMove", {
+      socket.broadcast.volatile.emit("cursorMove", {
         id: socket.id,
         x: data.x,
         y: data.y,
@@ -242,7 +247,7 @@ io.on("connection", (socket) => {
 
   socket.on("laserPoint", (point) => {
     if (!players[socket.id] || !isValidPoint(point)) return;
-    socket.broadcast.emit("laserPoint", {
+    socket.broadcast.volatile.emit("laserPoint", {
       id: socket.id,
       x: point.x,
       y: point.y,
@@ -265,6 +270,16 @@ io.on("connection", (socket) => {
 function emitPlayers() {
   io.emit("players", players);
   io.emit("playerCount", Object.keys(players).length);
+}
+
+function sanitizeName(name) {
+  if (typeof name !== "string") return "Anonymous";
+  const trimmed = name.trim().slice(0, 15);
+  return trimmed || "Anonymous";
+}
+
+function isValidColor(color) {
+  return typeof color === "string" && /^#[0-9a-fA-F]{6}$/.test(color);
 }
 
 function isValidStroke(stroke) {

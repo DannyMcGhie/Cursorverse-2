@@ -27,6 +27,7 @@ const clearPaintButton = document.getElementById("clearPaint");
 let username = "";
 let usernameColor = "#ffeb3b"; // default yellow
 let cursorSkin = "cursors/cursor.png"; // default skin
+let hasJoined = false;
 let paintMode = false;
 let paintTool = "brush";
 let laserMode = false;
@@ -41,8 +42,12 @@ let stampHistory = [];
 let undoStack = [];
 let redoStack = [];
 let laserDots = {};
+let pendingCursorPoint = null;
+let cursorEmitTimeout = null;
+let lastCursorEmit = 0;
 
 const MAX_BACKGROUND_FILE_SIZE = 3000000;
+const CURSOR_SEND_INTERVAL = 33;
 
 function resizePaintCanvas() {
   const snapshot = paintHistory.slice();
@@ -240,6 +245,44 @@ function getPaintPoint(event) {
   return { x: event.clientX, y: event.clientY };
 }
 
+function joinCursorverse(name, color) {
+  username = name.trim();
+  usernameColor = color;
+  hasJoined = true;
+  localStorage.setItem("cursorverseUsername", username);
+  localStorage.setItem("cursorverseColor", usernameColor);
+  document.getElementById("usernameOverlay").style.display = "none";
+  socket.emit("setUsername", { name: username, color: usernameColor });
+  socket.emit("setSkin", cursorSkin);
+  if (socket.id && !cursors[socket.id]) {
+    createCursor(socket.id, username, usernameColor, cursorSkin);
+  }
+}
+
+function scheduleCursorEmit(x, y) {
+  if (!hasJoined || !socket.connected) return;
+  pendingCursorPoint = { x, y };
+
+  const now = Date.now();
+  const elapsed = now - lastCursorEmit;
+  if (elapsed >= CURSOR_SEND_INTERVAL) {
+    emitPendingCursor();
+    return;
+  }
+
+  if (!cursorEmitTimeout) {
+    cursorEmitTimeout = setTimeout(emitPendingCursor, CURSOR_SEND_INTERVAL - elapsed);
+  }
+}
+
+function emitPendingCursor() {
+  cursorEmitTimeout = null;
+  if (!pendingCursorPoint || !hasJoined || !socket.connected) return;
+  socket.volatile.emit("cursorMove", pendingCursorPoint);
+  pendingCursorPoint = null;
+  lastCursorEmit = Date.now();
+}
+
 resizePaintCanvas();
 resizeBackgroundCanvas();
 window.addEventListener("resize", () => {
@@ -431,14 +474,26 @@ document.querySelectorAll(".colorBox").forEach(box => {
 document.getElementById("joinBtn").addEventListener("click", () => {
   const input = document.getElementById("usernameInput");
   if (input.value.trim() !== "") {
-    username = input.value.trim();
-    document.getElementById("usernameOverlay").style.display = "none";
+    joinCursorverse(input.value.trim(), usernameColor);
+  }
+});
 
-    // Send username and color to server
+const savedUsername = localStorage.getItem("cursorverseUsername");
+const savedColor = localStorage.getItem("cursorverseColor");
+if (savedColor && /^#[0-9a-fA-F]{6}$/.test(savedColor)) {
+  usernameColor = savedColor;
+  document.querySelectorAll(".colorBox").forEach((box) => {
+    box.classList.toggle("selected", box.dataset.color === savedColor);
+  });
+}
+if (savedUsername) {
+  document.getElementById("usernameInput").value = savedUsername;
+}
+
+socket.on("connect", () => {
+  if (hasJoined && username) {
     socket.emit("setUsername", { name: username, color: usernameColor });
-
-    // Create your own cursor immediately
-    createCursor(socket.id, username, usernameColor, cursorSkin);
+    socket.emit("setSkin", cursorSkin);
   }
 });
 
@@ -512,8 +567,7 @@ function removeCursor(id) {
 
 // Track your cursor
 document.addEventListener("mousemove", (e) => {
-  // Emit your cursor position
-  socket.emit("cursorMove", { x: e.clientX, y: e.clientY });
+  scheduleCursorEmit(e.clientX, e.clientY);
 
   // Update your own cursor immediately
   if (cursors[socket.id]) {
@@ -524,7 +578,7 @@ document.addEventListener("mousemove", (e) => {
   }
 
   if (laserMode) {
-    socket.emit("laserPoint", { x: e.clientX, y: e.clientY });
+    if (hasJoined) socket.volatile.emit("laserPoint", { x: e.clientX, y: e.clientY });
     showLaserPoint({
       id: socket.id,
       x: e.clientX,
@@ -624,8 +678,14 @@ socket.on("players", (activePlayers) => {
   });
 
   Object.entries(activePlayers || {}).forEach(([id, player]) => {
-    if (id === socket.id) return;
     if (!cursors[id]) createCursor(id, player.username, player.color, player.skin);
+    if (labels[id]) {
+      labels[id].innerText = player.username;
+      labels[id].style.color = player.color;
+    }
+    if (cursors[id] && player.skin) {
+      cursors[id].style.backgroundImage = `url(${player.skin})`;
+    }
   });
 });
 
