@@ -28,6 +28,127 @@
       z-index: 3000;
     }
 
+    #paintCanvas {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 1;
+      background: transparent;
+    }
+
+    #backgroundCanvas {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 0;
+      background: transparent;
+    }
+
+    #paintToolbar {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      padding: 10px;
+      max-width: min(760px, calc(100vw - 20px));
+      background: rgba(0, 0, 0, 0.65);
+      border-radius: 12px;
+      z-index: 2500;
+    }
+
+    #paintToolbar button {
+      border: none;
+      border-radius: 8px;
+      padding: 9px 12px;
+      background: #333;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    #paintToolbar button:hover,
+    #paintToolbar button.active {
+      background: limegreen;
+    }
+
+    #backgroundFile {
+      display: none;
+    }
+
+    #brushColor {
+      width: 38px;
+      height: 34px;
+      border: none;
+      border-radius: 8px;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    #brushSize {
+      width: 110px;
+      cursor: pointer;
+    }
+
+    #brushSizeValue {
+      min-width: 34px;
+      font-size: 14px;
+      font-weight: 600;
+      text-align: right;
+    }
+
+    #backgroundFit,
+    #stampSelect,
+    #reactionSelect {
+      height: 34px;
+      border: none;
+      border-radius: 8px;
+      background: #222;
+      color: white;
+      font-weight: 600;
+      padding: 0 8px;
+    }
+
+    .stamp {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 2200;
+      text-shadow: 1px 1px 2px black;
+    }
+
+    .reactionBubble {
+      position: absolute;
+      transform: translate(-50%, -100%);
+      pointer-events: none;
+      z-index: 10000;
+      font-size: 26px;
+      text-shadow: 1px 1px 2px black;
+      animation: reactionFloat 1.8s ease-out forwards;
+    }
+
+    .laserDot {
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      border-radius: 999px;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 10001;
+      box-shadow: 0 0 12px currentColor, 0 0 24px currentColor;
+      opacity: 0.9;
+      transition: opacity 0.25s ease;
+    }
+
+    @keyframes reactionFloat {
+      0% { opacity: 1; transform: translate(-50%, -100%) scale(0.9); }
+      100% { opacity: 0; transform: translate(-50%, -190%) scale(1.15); }
+    }
+
     .cursor {
       width: 17px;
       height: 28px;
@@ -268,6 +389,50 @@
 </head>
 <body>
   <div id="playerCount">Players online: 0</div>
+
+  <canvas id="backgroundCanvas"></canvas>
+  <canvas id="paintCanvas"></canvas>
+
+  <div id="paintToolbar">
+    <button id="undoAction" type="button">Undo</button>
+    <button id="redoAction" type="button">Redo</button>
+    <button id="paintToggle" type="button">Paint</button>
+    <button id="eraserToggle" type="button">Eraser</button>
+    <button id="imageEraserToggle" type="button">Erase Image</button>
+    <button id="laserToggle" type="button">Laser</button>
+    <input id="brushColor" type="color" value="#00d084" aria-label="Brush color" />
+    <input id="brushSize" type="range" min="4" max="80" value="16" aria-label="Brush size" />
+    <span id="brushSizeValue">16px</span>
+    <select id="backgroundFit" aria-label="Background fit">
+      <option value="cover">Cover</option>
+      <option value="contain">Contain</option>
+      <option value="stretch">Stretch</option>
+      <option value="center">Center</option>
+    </select>
+    <select id="stampSelect" aria-label="Stamp">
+      <option value="">Stamp</option>
+      <option value="⭐">⭐ Star</option>
+      <option value="❤️">❤️ Heart</option>
+      <option value="✅">✅ Check</option>
+      <option value="❌">❌ X</option>
+      <option value="🔥">🔥 Fire</option>
+      <option value="💡">💡 Idea</option>
+    </select>
+    <select id="reactionSelect" aria-label="Reaction">
+      <option value="">React</option>
+      <option value="👍">👍 Like</option>
+      <option value="❤️">❤️ Love</option>
+      <option value="😂">😂 Laugh</option>
+      <option value="😮">😮 Wow</option>
+      <option value="🎉">🎉 Party</option>
+      <option value="👀">👀 Look</option>
+    </select>
+    <button id="importBackground" type="button">Import PNG</button>
+    <input id="backgroundFile" type="file" accept="image/png,image/jpeg,image/webp" />
+    <button id="saveCanvas" type="button">Save</button>
+    <button id="clearBackground" type="button">Clear Image</button>
+    <button id="clearPaint" type="button">Clear</button>
+  </div>
 
   <!-- Username overlay -->
   <div id="usernameOverlay">
