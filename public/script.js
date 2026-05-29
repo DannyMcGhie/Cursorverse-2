@@ -16,18 +16,26 @@ const brushSizeValue = document.getElementById("brushSizeValue");
 const undoActionButton = document.getElementById("undoAction");
 const redoActionButton = document.getElementById("redoAction");
 const backgroundFitSelect = document.getElementById("backgroundFit");
-const backgroundGallerySelect = document.getElementById("backgroundGallery");
+const galleryTab = document.getElementById("galleryTab");
+const galleryToggle = document.getElementById("galleryToggle");
+const backgroundGalleryPanel = document.getElementById("backgroundGalleryPanel");
 const stampSelect = document.getElementById("stampSelect");
 const reactionSelect = document.getElementById("reactionSelect");
+const chatRecipient = document.getElementById("chatRecipient");
 const importBackgroundButton = document.getElementById("importBackground");
 const backgroundFileInput = document.getElementById("backgroundFile");
 const saveCanvasButton = document.getElementById("saveCanvas");
 const clearBackgroundButton = document.getElementById("clearBackground");
 const clearPaintButton = document.getElementById("clearPaint");
+const importSkinButton = document.getElementById("importSkin");
+const customSkinFileInput = document.getElementById("customSkinFile");
+const cursorSizeInput = document.getElementById("cursorSize");
+const cursorSizeValue = document.getElementById("cursorSizeValue");
 
 let username = "";
 let usernameColor = "#ffeb3b"; // default yellow
 let cursorSkin = "cursors/cursor.png"; // default skin
+let cursorSize = 28;
 let hasJoined = false;
 let paintMode = false;
 let paintTool = "brush";
@@ -49,6 +57,7 @@ let cursorEmitTimeout = null;
 let lastCursorEmit = 0;
 
 const MAX_BACKGROUND_FILE_SIZE = 3000000;
+const MAX_SKIN_FILE_SIZE = 1500000;
 const CURSOR_SEND_INTERVAL = 33;
 
 function resizePaintCanvas() {
@@ -205,13 +214,51 @@ function rememberAction(type, item) {
 }
 
 function renderBackgroundGallery() {
-  backgroundGallerySelect.innerHTML = '<option value="">Backgrounds</option>';
+  backgroundGalleryPanel.innerHTML = "";
+  if (!backgroundGallery.length) {
+    const empty = document.createElement("div");
+    empty.innerText = "No saved backgrounds";
+    empty.style.gridColumn = "1 / -1";
+    empty.style.color = "#bbb";
+    empty.style.fontSize = "13px";
+    backgroundGalleryPanel.appendChild(empty);
+    return;
+  }
+
   backgroundGallery.forEach((item, index) => {
-    const option = document.createElement("option");
-    option.value = item.id;
-    option.innerText = `Background ${index + 1}`;
-    backgroundGallerySelect.appendChild(option);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.classList.add("backgroundThumb");
+    button.style.backgroundImage = `url(${item.image})`;
+    button.title = `Background ${index + 1}`;
+    button.addEventListener("click", () => {
+      socket.emit("selectBackgroundFromGallery", item.id);
+    });
+    backgroundGalleryPanel.appendChild(button);
   });
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function setBrushSize(size) {
+  const nextSize = clamp(Math.round(size), Number(brushSizeInput.min), Number(brushSizeInput.max));
+  brushSizeInput.value = nextSize;
+  brushSizeValue.innerText = `${nextSize}px`;
+}
+
+function setCursorSize(size, shouldEmit = true) {
+  cursorSize = clamp(Math.round(size), Number(cursorSizeInput.min), Number(cursorSizeInput.max));
+  cursorSizeInput.value = cursorSize;
+  cursorSizeValue.innerText = `${cursorSize}px`;
+  if (cursors[socket.id]) applyCursorSize(cursors[socket.id], cursorSize);
+  if (hasJoined && shouldEmit) socket.emit("setCursorSize", cursorSize);
+}
+
+function applyCursorSize(cursor, size) {
+  cursor.style.width = `${size}px`;
+  cursor.style.height = `${size}px`;
 }
 
 function renderStamps() {
@@ -276,6 +323,7 @@ function joinCursorverse(name, color) {
   document.body.classList.remove("showSystemCursor");
   socket.emit("setUsername", { name: username, color: usernameColor });
   socket.emit("setSkin", cursorSkin);
+  socket.emit("setCursorSize", cursorSize);
   if (socket.id && !cursors[socket.id]) {
     createCursor(socket.id, username, usernameColor, cursorSkin);
   }
@@ -345,10 +393,8 @@ backgroundFitSelect.addEventListener("change", () => {
   socket.emit("setBackgroundFit", backgroundFitSelect.value);
 });
 
-backgroundGallerySelect.addEventListener("change", () => {
-  if (!backgroundGallerySelect.value) return;
-  socket.emit("selectBackgroundFromGallery", backgroundGallerySelect.value);
-  backgroundGallerySelect.value = "";
+galleryToggle.addEventListener("click", () => {
+  galleryTab.classList.toggle("open");
 });
 
 stampSelect.addEventListener("change", () => {
@@ -371,7 +417,11 @@ reactionSelect.addEventListener("change", () => {
 });
 
 brushSizeInput.addEventListener("input", () => {
-  brushSizeValue.innerText = `${brushSizeInput.value}px`;
+  setBrushSize(Number(brushSizeInput.value));
+});
+
+cursorSizeInput.addEventListener("input", () => {
+  setCursorSize(Number(cursorSizeInput.value));
 });
 
 clearPaintButton.addEventListener("click", () => {
@@ -491,6 +541,19 @@ saveCanvasButton.addEventListener("click", () => {
   saveCanvasSnapshot();
 });
 
+document.addEventListener("wheel", (e) => {
+  if (e.target.closest("#chatBox, #backgroundGalleryPanel")) return;
+  if (e.target.closest("#skinsOverlay")) {
+    e.preventDefault();
+    setCursorSize(cursorSize + (e.deltaY < 0 ? 4 : -4));
+    return;
+  }
+  if (paintMode || stampSelect.value) {
+    e.preventDefault();
+    setBrushSize(Number(brushSizeInput.value) + (e.deltaY < 0 ? 4 : -4));
+  }
+}, { passive: false });
+
 // --- Color selection ---
 document.querySelectorAll(".colorBox").forEach(box => {
   box.addEventListener("click", () => {
@@ -524,6 +587,7 @@ socket.on("connect", () => {
   if (hasJoined && username) {
     socket.emit("setUsername", { name: username, color: usernameColor });
     socket.emit("setSkin", cursorSkin);
+    socket.emit("setCursorSize", cursorSize);
   }
 });
 
@@ -532,7 +596,10 @@ const chatInput = document.getElementById("chatInput");
 chatInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") {
     if (chatInput.value.trim() !== "") {
-      socket.emit("chatMessage", chatInput.value.trim());
+      socket.emit("chatMessage", {
+        message: chatInput.value.trim(),
+        to: chatRecipient.value
+      });
       chatInput.value = "";
     }
     e.preventDefault();
@@ -579,6 +646,7 @@ function createCursor(id, name, color, skin) {
   cursor.style.backgroundImage = `url(${skin})`;
   cursor.style.backgroundSize = "contain";
   cursor.style.backgroundRepeat = "no-repeat";
+  applyCursorSize(cursor, id === socket.id ? cursorSize : 28);
   document.body.appendChild(cursor);
   cursors[id] = cursor;
 
@@ -640,7 +708,7 @@ document.addEventListener("mousedown", (e) => {
       emoji: stampSelect.value,
       x: e.clientX,
       y: e.clientY,
-      size: Math.max(24, Number(brushSizeInput.value) * 1.5)
+      size: Number(brushSizeInput.value)
     });
     return;
   }
@@ -680,13 +748,14 @@ document.addEventListener("mouseup", () => {
 });
 
 // Update other cursors
-socket.on("cursorMove", ({ id, x, y, username, color, skin }) => {
+socket.on("cursorMove", ({ id, x, y, username, color, skin, cursorSize }) => {
   if (!cursors[id]) createCursor(id, username, color, skin);
 
   if (cursors[id]) {
     cursors[id].style.left = `${x}px`;
     cursors[id].style.top = `${y}px`;
     if (skin) cursors[id].style.backgroundImage = `url(${skin})`;
+    if (cursorSize) applyCursorSize(cursors[id], cursorSize);
   }
 
   if (labels[id]) {
@@ -721,18 +790,36 @@ socket.on("players", (activePlayers) => {
     if (cursors[id] && player.skin) {
       cursors[id].style.backgroundImage = `url(${player.skin})`;
     }
+    if (cursors[id] && player.cursorSize) {
+      applyCursorSize(cursors[id], player.cursorSize);
+    }
+  });
+
+  chatRecipient.innerHTML = '<option value="">Public</option>';
+  Object.entries(activePlayers || {}).forEach(([id, player]) => {
+    if (id === socket.id) return;
+    const option = document.createElement("option");
+    option.value = id;
+    option.innerText = `Send to ${player.username}`;
+    chatRecipient.appendChild(option);
   });
 });
 
 // Chat messages
-socket.on("chatMessage", ({ username, message, color }) => {
+socket.on("chatMessage", ({ username, message, color, private: isPrivate, fromId }) => {
   const msg = document.createElement("div");
   const name = document.createElement("span");
-  name.innerText = `${username}:`;
+  name.innerText = `${isPrivate ? "Private " : ""}${username}:`;
   name.style.color = color;
   name.style.fontWeight = "600";
   msg.appendChild(name);
   msg.append(` ${message}`);
+  if (isPrivate) {
+    msg.style.background = "rgba(255, 255, 255, 0.08)";
+    msg.style.borderRadius = "6px";
+    msg.style.padding = "3px 5px";
+    msg.title = fromId === socket.id ? "Private message sent" : "Private message received";
+  }
   chatMessages.appendChild(msg);
   chatMessages.scrollTop = chatMessages.scrollHeight;
 });
@@ -850,6 +937,16 @@ const skinFiles = [
   { file: "cursor_pink.png", name: "Pink" }
 ];
 
+function selectSkin(skin, selectedElement) {
+  cursorSkin = skin;
+  socket.emit("setSkin", cursorSkin);
+
+  if (cursors[socket.id]) cursors[socket.id].style.backgroundImage = `url(${cursorSkin})`;
+
+  document.querySelectorAll(".skinOption").forEach(opt => opt.classList.remove("selected"));
+  if (selectedElement) selectedElement.classList.add("selected");
+}
+
 // Populate skins grid
 skinFiles.forEach((skin, index) => {
   const div = document.createElement("div");
@@ -860,15 +957,39 @@ skinFiles.forEach((skin, index) => {
   if(index === 0) div.classList.add("selected"); // default selected
 
   div.addEventListener("click", () => {
-    cursorSkin = `cursors/${skin.file}`; // full path for your cursor
-    socket.emit("setSkin", cursorSkin);
-
-    // Update your cursor immediately
-    if (cursors[socket.id]) cursors[socket.id].style.backgroundImage = `url(${cursorSkin})`;
-
-    document.querySelectorAll(".skinOption").forEach(opt => opt.classList.remove("selected"));
-    div.classList.add("selected");
+    selectSkin(`cursors/${skin.file}`, div);
   });
+});
+
+importSkinButton.addEventListener("click", () => {
+  customSkinFileInput.click();
+});
+
+customSkinFileInput.addEventListener("change", () => {
+  const file = customSkinFileInput.files[0];
+  if (!file) return;
+  if (!file.type.startsWith("image/")) {
+    alert("Please choose a PNG, JPG, or WebP image.");
+    customSkinFileInput.value = "";
+    return;
+  }
+  if (file.size > MAX_SKIN_FILE_SIZE) {
+    alert("Please choose a cursor image under 1.5 MB.");
+    customSkinFileInput.value = "";
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    const div = document.createElement("div");
+    div.classList.add("skinOption");
+    div.innerHTML = `<img src="${reader.result}" alt="Custom"><div>Custom</div>`;
+    skinsGrid.prepend(div);
+    div.addEventListener("click", () => selectSkin(reader.result, div));
+    selectSkin(reader.result, div);
+    customSkinFileInput.value = "";
+  };
+  reader.readAsDataURL(file);
 });
 
 // Open/close skins overlay

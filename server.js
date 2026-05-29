@@ -27,6 +27,7 @@ const MAX_BACKGROUND_ERASE_STROKES = 1000;
 const MAX_BACKGROUND_GALLERY_ITEMS = 12;
 const MAX_STAMPS = 500;
 const MAX_BACKGROUND_IMAGE_LENGTH = 4500000;
+const MAX_SKIN_IMAGE_LENGTH = 2500000;
 
 io.on("connection", (socket) => {
   console.log("New client connected");
@@ -46,14 +47,22 @@ io.on("connection", (socket) => {
     players[socket.id] = {
       username: sanitizeName(data.name),
       color: isValidColor(data.color) ? data.color : "#ffeb3b",
-      skin: existingPlayer?.skin || "cursors/cursor.png"
+      skin: existingPlayer?.skin || "cursors/cursor.png",
+      cursorSize: existingPlayer?.cursorSize || 28
     };
     emitPlayers();
   });
 
   // Skin set by client
   socket.on("setSkin", (skin) => {
-    if (players[socket.id]) players[socket.id].skin = skin;
+    if (players[socket.id] && isValidSkin(skin)) players[socket.id].skin = skin;
+    emitPlayers();
+  });
+
+  socket.on("setCursorSize", (size) => {
+    if (players[socket.id] && isValidCursorSize(size)) {
+      players[socket.id].cursorSize = size;
+    }
     emitPlayers();
   });
 
@@ -76,19 +85,35 @@ io.on("connection", (socket) => {
         y: data.y,
         username: players[socket.id].username,
         color: players[socket.id].color,
+        cursorSize: players[socket.id].cursorSize || 28,
         skin: players[socket.id].skin || "cursors/cursor.png" // ✅ fixed fallback path
       });
     }
   });
 
   // Chat messages
-  socket.on("chatMessage", (message) => {
+  socket.on("chatMessage", (payload) => {
     if (!players[socket.id]) return;
-    io.emit("chatMessage", {
+    const message = typeof payload === "string" ? payload : payload?.message;
+    const to = typeof payload === "object" ? payload.to : "";
+    if (typeof message !== "string" || !message.trim()) return;
+
+    const chatPayload = {
       username: players[socket.id].username,
-      message: message,
-      color: players[socket.id].color
-    });
+      message: message.trim().slice(0, 200),
+      color: players[socket.id].color,
+      fromId: socket.id,
+      toId: to || "",
+      private: Boolean(to && players[to])
+    };
+
+    if (chatPayload.private) {
+      socket.emit("chatMessage", chatPayload);
+      socket.to(to).emit("chatMessage", chatPayload);
+      return;
+    }
+
+    io.emit("chatMessage", chatPayload);
   });
 
   // Collaborative paint strokes
@@ -330,6 +355,20 @@ function isValidColor(color) {
   return typeof color === "string" && /^#[0-9a-fA-F]{6}$/.test(color);
 }
 
+function isValidCursorSize(size) {
+  return typeof size === "number" && Number.isFinite(size) && size >= 12 && size <= 160;
+}
+
+function isValidSkin(skin) {
+  return (
+    typeof skin === "string" &&
+    (
+      /^cursors\/[a-z0-9_-]+\.png$/i.test(skin) ||
+      (skin.length <= MAX_SKIN_IMAGE_LENGTH && /^data:image\/(png|jpeg|jpg|webp);base64,/.test(skin))
+    )
+  );
+}
+
 function addBackgroundToGallery(image) {
   backgroundGallery = backgroundGallery.filter(item => item.image !== image);
   backgroundGallery.unshift({
@@ -391,7 +430,7 @@ function isValidStamp(stamp) {
     typeof stamp.y === "number" &&
     typeof stamp.size === "number" &&
     stamp.size >= 16 &&
-    stamp.size <= 120 &&
+    stamp.size <= 160 &&
     Number.isFinite(stamp.x) &&
     Number.isFinite(stamp.y)
   );

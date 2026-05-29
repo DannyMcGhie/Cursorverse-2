@@ -55,12 +55,13 @@
       position: absolute;
       top: 10px;
       right: 10px;
+      left: 230px;
       display: flex;
       flex-wrap: wrap;
       align-items: center;
       gap: 10px;
       padding: 10px;
-      max-width: min(760px, calc(100vw - 20px));
+      max-width: none;
       background: rgba(0, 0, 0, 0.65);
       border-radius: 12px;
       z-index: 2500;
@@ -81,7 +82,8 @@
       background: limegreen;
     }
 
-    #backgroundFile {
+    #backgroundFile,
+    #customSkinFile {
       display: none;
     }
 
@@ -107,9 +109,9 @@
     }
 
     #backgroundFit,
-    #backgroundGallery,
     #stampSelect,
-    #reactionSelect {
+    #reactionSelect,
+    #chatRecipient {
       height: 34px;
       border: none;
       border-radius: 8px;
@@ -117,6 +119,53 @@
       color: white;
       font-weight: 600;
       padding: 0 8px;
+    }
+
+    #galleryTab {
+      position: fixed;
+      top: 82px;
+      right: 10px;
+      z-index: 2600;
+    }
+
+    #galleryToggle {
+      border: none;
+      border-radius: 8px;
+      padding: 9px 12px;
+      background: #333;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    #backgroundGalleryPanel {
+      display: none;
+      width: 300px;
+      max-height: 360px;
+      overflow-y: auto;
+      margin-top: 8px;
+      padding: 10px;
+      background: rgba(0, 0, 0, 0.78);
+      border-radius: 12px;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    #galleryTab.open #backgroundGalleryPanel {
+      display: grid;
+    }
+
+    .backgroundThumb {
+      aspect-ratio: 1 / 1;
+      border: 2px solid transparent;
+      border-radius: 8px;
+      background-size: cover;
+      background-position: center;
+      cursor: pointer;
+    }
+
+    .backgroundThumb:hover {
+      border-color: limegreen;
     }
 
     .stamp {
@@ -281,12 +330,24 @@
       font-weight: 600; /* bold usernames */
     }
 
+    #chatControls {
+      display: flex;
+      border-top: 1px solid #444;
+    }
+
+    #chatRecipient {
+      width: 110px;
+      height: auto;
+      border-radius: 0;
+      border-right: 1px solid #444;
+      font-size: 12px;
+    }
+
     #chatInput {
       border: none;
       padding: 10px;
-      width: 100%;
+      flex: 1;
       box-sizing: border-box;
-      border-top: 1px solid #444;
       background: #222;
       color: white;
       border-radius: 0 0 12px 12px;
@@ -294,28 +355,6 @@
     }
 
 /* Skins button */
-#skinsButton {
-  position: absolute;
-  bottom: 10px; /* distance from bottom */
-  right: 10px;  /* move to bottom-right corner */
-  padding: 16px 28px; /* increase size */
-  background: #333;
-  border: none;
-  border-radius: 12px;
-  color: white;
-  font-weight: 600;
-  font-size: 18px; /* bigger text */
-  cursor: pointer;
-  z-index: 2500;
-  transition: transform 0.2s;
-}
-
-#skinsButton:hover {
-  background: #444;
-  transform: scale(1.05); /* subtle hover zoom */
-}
-
-
     /* Skins overlay */
     #skinsOverlay {
       position: fixed;
@@ -391,6 +430,10 @@
     #closeSkins:hover {
       background: darkred;
     }
+
+    #cursorSize {
+      width: 180px;
+    }
   </style>
 </head>
 <body class="showSystemCursor">
@@ -415,9 +458,6 @@
       <option value="stretch">Stretch</option>
       <option value="center">Center</option>
     </select>
-    <select id="backgroundGallery" aria-label="Background gallery">
-      <option value="">Backgrounds</option>
-    </select>
     <select id="stampSelect" aria-label="Stamp">
       <option value="">Stamp</option>
       <option value="⭐">⭐ Star</option>
@@ -438,9 +478,15 @@
     </select>
     <button id="importBackground" type="button">Import PNG</button>
     <input id="backgroundFile" type="file" accept="image/png,image/jpeg,image/webp" />
+    <button id="skinsButton" type="button">Skins</button>
     <button id="saveCanvas" type="button">Save</button>
     <button id="clearBackground" type="button">Clear Image</button>
     <button id="clearPaint" type="button">Clear</button>
+  </div>
+
+  <div id="galleryTab">
+    <button id="galleryToggle" type="button">Backgrounds</button>
+    <div id="backgroundGalleryPanel"></div>
   </div>
 
   <!-- Username overlay -->
@@ -467,16 +513,22 @@
   <!-- Chat box -->
   <div id="chatBox">
     <div id="chatMessages"></div>
-    <input id="chatInput" type="text" placeholder="Type / to chat" maxlength="200" />
+    <div id="chatControls">
+      <select id="chatRecipient" aria-label="Message recipient">
+        <option value="">Public</option>
+      </select>
+      <input id="chatInput" type="text" placeholder="Type / to chat" maxlength="200" />
+    </div>
   </div>
-
-  <!-- Skins button -->
-  <button id="skinsButton">Skins</button>
 
   <!-- Skins overlay -->
   <div id="skinsOverlay">
     <div id="skinsBox">
       <h2>Select a Skin</h2>
+      <button id="importSkin" type="button">Import PNG Skin</button>
+      <input id="customSkinFile" type="file" accept="image/png,image/jpeg,image/webp" />
+      <input id="cursorSize" type="range" min="12" max="160" value="28" aria-label="Cursor size" />
+      <span id="cursorSizeValue">28px</span>
       <div id="skinsGrid">
         <!-- JS will populate this with skin options -->
       </div>
