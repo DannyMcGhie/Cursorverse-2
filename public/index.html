@@ -391,6 +391,64 @@
       padding-right: 5px;
     }
 
+    #skinMaker {
+      display: none;
+      margin: 12px 0;
+      padding: 12px;
+      background: #222;
+      border-radius: 8px;
+    }
+
+    #skinMaker.open {
+      display: block;
+    }
+
+    #skinMakerControls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+
+    #skinMakerControls button {
+      border: none;
+      border-radius: 6px;
+      padding: 8px 10px;
+      background: #333;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    #skinMakerControls button:hover {
+      background: #444;
+    }
+
+    #pixelColor {
+      width: 36px;
+      height: 32px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    #pixelGrid {
+      display: grid;
+      grid-template-columns: repeat(16, 1fr);
+      width: min(320px, 100%);
+      aspect-ratio: 1 / 1;
+      margin: 0 auto;
+      border: 1px solid #555;
+      background: #111;
+    }
+
+    .pixelCell {
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: transparent;
+      cursor: crosshair;
+    }
+
     .skinOption {
       background: #222;
       border-radius: 8px;
@@ -525,10 +583,20 @@
   <div id="skinsOverlay">
     <div id="skinsBox">
       <h2>Select a Skin</h2>
+      <button id="makeSkin" type="button">Make Your Own Skin</button>
       <button id="importSkin" type="button">Import PNG Skin</button>
       <input id="customSkinFile" type="file" accept="image/png,image/jpeg,image/webp" />
       <input id="cursorSize" type="range" min="12" max="160" value="28" aria-label="Cursor size" />
       <span id="cursorSizeValue">28px</span>
+      <div id="skinMaker">
+        <div id="skinMakerControls">
+          <input id="pixelColor" type="color" value="#ffffff" aria-label="Pixel color" />
+          <button id="pixelEraser" type="button">Eraser</button>
+          <button id="clearPixels" type="button">Clear</button>
+          <button id="savePixelSkin" type="button">Save Skin</button>
+        </div>
+        <div id="pixelGrid" aria-label="Pixel skin editor"></div>
+      </div>
       <div id="skinsGrid">
         <!-- JS will populate this with skin options -->
       </div>

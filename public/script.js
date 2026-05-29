@@ -31,6 +31,13 @@ const importSkinButton = document.getElementById("importSkin");
 const customSkinFileInput = document.getElementById("customSkinFile");
 const cursorSizeInput = document.getElementById("cursorSize");
 const cursorSizeValue = document.getElementById("cursorSizeValue");
+const makeSkinButton = document.getElementById("makeSkin");
+const skinMaker = document.getElementById("skinMaker");
+const pixelGrid = document.getElementById("pixelGrid");
+const pixelColorInput = document.getElementById("pixelColor");
+const pixelEraserButton = document.getElementById("pixelEraser");
+const clearPixelsButton = document.getElementById("clearPixels");
+const savePixelSkinButton = document.getElementById("savePixelSkin");
 
 let username = "";
 let usernameColor = "#ffeb3b"; // default yellow
@@ -55,10 +62,14 @@ let laserDots = {};
 let pendingCursorPoint = null;
 let cursorEmitTimeout = null;
 let lastCursorEmit = 0;
+let isPixelDrawing = false;
+let pixelEraseMode = false;
+let pixelSkinCount = 0;
 
 const MAX_BACKGROUND_FILE_SIZE = 3000000;
 const MAX_SKIN_FILE_SIZE = 1500000;
 const CURSOR_SEND_INTERVAL = 33;
+const PIXEL_GRID_SIZE = 16;
 
 function resizePaintCanvas() {
   const snapshot = paintHistory.slice();
@@ -261,6 +272,49 @@ function applyCursorSize(cursor, size) {
   cursor.style.height = `${size}px`;
 }
 
+function addSkinOption(imageSource, name = "Custom") {
+  const div = document.createElement("div");
+  div.classList.add("skinOption");
+
+  const image = document.createElement("img");
+  image.src = imageSource;
+  image.alt = name;
+
+  const label = document.createElement("div");
+  label.innerText = name;
+
+  div.appendChild(image);
+  div.appendChild(label);
+  skinsGrid.prepend(div);
+  div.addEventListener("click", () => selectSkin(imageSource, div));
+  selectSkin(imageSource, div);
+}
+
+function paintPixel(cell) {
+  cell.style.background = pixelEraseMode ? "transparent" : pixelColorInput.value;
+}
+
+function makePixelSkinDataUrl() {
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+  const pixelSize = 8;
+  canvas.width = PIXEL_GRID_SIZE * pixelSize;
+  canvas.height = PIXEL_GRID_SIZE * pixelSize;
+  context.imageSmoothingEnabled = false;
+  context.clearRect(0, 0, canvas.width, canvas.height);
+
+  Array.from(pixelGrid.children).forEach((cell, index) => {
+    const color = cell.style.backgroundColor;
+    if (!color || color === "transparent") return;
+    const x = (index % PIXEL_GRID_SIZE) * pixelSize;
+    const y = Math.floor(index / PIXEL_GRID_SIZE) * pixelSize;
+    context.fillStyle = color;
+    context.fillRect(x, y, pixelSize, pixelSize);
+  });
+
+  return canvas.toDataURL("image/png");
+}
+
 function renderStamps() {
   document.querySelectorAll(".stamp").forEach(stamp => stamp.remove());
   stampHistory.forEach(renderStamp);
@@ -355,9 +409,27 @@ function emitPendingCursor() {
 
 resizePaintCanvas();
 resizeBackgroundCanvas();
+for (let index = 0; index < PIXEL_GRID_SIZE * PIXEL_GRID_SIZE; index++) {
+  const cell = document.createElement("div");
+  cell.classList.add("pixelCell");
+  cell.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+    isPixelDrawing = true;
+    paintPixel(cell);
+  });
+  cell.addEventListener("mouseenter", () => {
+    if (isPixelDrawing) paintPixel(cell);
+  });
+  pixelGrid.appendChild(cell);
+}
+
 window.addEventListener("resize", () => {
   resizeBackgroundCanvas();
   resizePaintCanvas();
+});
+
+document.addEventListener("mouseup", () => {
+  isPixelDrawing = false;
 });
 
 paintToggle.addEventListener("click", () => setPaintMode(!paintMode));
@@ -965,6 +1037,26 @@ importSkinButton.addEventListener("click", () => {
   customSkinFileInput.click();
 });
 
+makeSkinButton.addEventListener("click", () => {
+  skinMaker.classList.toggle("open");
+});
+
+pixelEraserButton.addEventListener("click", () => {
+  pixelEraseMode = !pixelEraseMode;
+  pixelEraserButton.classList.toggle("active", pixelEraseMode);
+});
+
+clearPixelsButton.addEventListener("click", () => {
+  Array.from(pixelGrid.children).forEach((cell) => {
+    cell.style.background = "transparent";
+  });
+});
+
+savePixelSkinButton.addEventListener("click", () => {
+  pixelSkinCount += 1;
+  addSkinOption(makePixelSkinDataUrl(), `Pixel ${pixelSkinCount}`);
+});
+
 customSkinFileInput.addEventListener("change", () => {
   const file = customSkinFileInput.files[0];
   if (!file) return;
@@ -981,12 +1073,7 @@ customSkinFileInput.addEventListener("change", () => {
 
   const reader = new FileReader();
   reader.onload = () => {
-    const div = document.createElement("div");
-    div.classList.add("skinOption");
-    div.innerHTML = `<img src="${reader.result}" alt="Custom"><div>Custom</div>`;
-    skinsGrid.prepend(div);
-    div.addEventListener("click", () => selectSkin(reader.result, div));
-    selectSkin(reader.result, div);
+    addSkinOption(reader.result, "Custom");
     customSkinFileInput.value = "";
   };
   reader.readAsDataURL(file);
