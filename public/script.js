@@ -1,6 +1,7 @@
 const socket = io();
 const cursors = {};
 const labels = {};
+const cloneGroups = {};
 const chatMessages = document.getElementById("chatMessages");
 const backgroundCanvas = document.getElementById("backgroundCanvas");
 const backgroundContext = backgroundCanvas.getContext("2d");
@@ -10,6 +11,8 @@ const paintToggle = document.getElementById("paintToggle");
 const eraserToggle = document.getElementById("eraserToggle");
 const imageEraserToggle = document.getElementById("imageEraserToggle");
 const laserToggle = document.getElementById("laserToggle");
+const textToggle = document.getElementById("textToggle");
+const textInput = document.getElementById("textInput");
 const brushColorInput = document.getElementById("brushColor");
 const brushSizeInput = document.getElementById("brushSize");
 const brushSizeValue = document.getElementById("brushSizeValue");
@@ -31,6 +34,7 @@ const importSkinButton = document.getElementById("importSkin");
 const customSkinFileInput = document.getElementById("customSkinFile");
 const cursorSizeInput = document.getElementById("cursorSize");
 const cursorSizeValue = document.getElementById("cursorSizeValue");
+const cloneToggle = document.getElementById("cloneToggle");
 const makeSkinButton = document.getElementById("makeSkin");
 const skinMaker = document.getElementById("skinMaker");
 const pixelGrid = document.getElementById("pixelGrid");
@@ -47,6 +51,7 @@ let hasJoined = false;
 let paintMode = false;
 let paintTool = "brush";
 let laserMode = false;
+let textMode = false;
 let isDrawing = false;
 let currentStroke = null;
 let paintHistory = [];
@@ -56,6 +61,7 @@ let backgroundEraseHistory = [];
 let backgroundFit = "cover";
 let backgroundGallery = [];
 let stampHistory = [];
+let textHistory = [];
 let undoStack = [];
 let redoStack = [];
 let laserDots = {};
@@ -65,6 +71,7 @@ let lastCursorEmit = 0;
 let isPixelDrawing = false;
 let pixelEraseMode = false;
 let pixelSkinCount = 0;
+let clonesEnabled = false;
 
 const MAX_BACKGROUND_FILE_SIZE = 3000000;
 const MAX_SKIN_FILE_SIZE = 1500000;
@@ -272,6 +279,52 @@ function applyCursorSize(cursor, size) {
   cursor.style.height = `${size}px`;
 }
 
+function setTextMode(enabled) {
+  textMode = enabled;
+  textToggle.classList.toggle("active", textMode);
+  if (textMode) {
+    setPaintMode(false);
+    setLaserMode(false);
+    stampSelect.value = "";
+  }
+}
+
+function ensureCloneGroup(id) {
+  if (!cloneGroups[id]) {
+    cloneGroups[id] = [];
+    for (let index = 0; index < 6; index++) {
+      const clone = document.createElement("div");
+      clone.classList.add("cursor", "cursorClone");
+      document.body.appendChild(clone);
+      cloneGroups[id].push(clone);
+    }
+  }
+  return cloneGroups[id];
+}
+
+function updateCloneCursors(id, x, y, skin, size, enabled) {
+  if (!enabled) {
+    removeCloneCursors(id);
+    return;
+  }
+
+  const clones = ensureCloneGroup(id);
+  const radius = Math.max(34, size * 1.8);
+  clones.forEach((clone, index) => {
+    const angle = (Math.PI * 2 * index) / clones.length;
+    clone.style.left = `${x + Math.cos(angle) * radius}px`;
+    clone.style.top = `${y + Math.sin(angle) * radius}px`;
+    clone.style.backgroundImage = `url(${skin})`;
+    applyCursorSize(clone, size);
+  });
+}
+
+function removeCloneCursors(id) {
+  if (!cloneGroups[id]) return;
+  cloneGroups[id].forEach(clone => clone.remove());
+  delete cloneGroups[id];
+}
+
 function addSkinOption(imageSource, name = "Custom") {
   const div = document.createElement("div");
   div.classList.add("skinOption");
@@ -378,6 +431,7 @@ function joinCursorverse(name, color) {
   socket.emit("setUsername", { name: username, color: usernameColor });
   socket.emit("setSkin", cursorSkin);
   socket.emit("setCursorSize", cursorSize);
+  socket.emit("setClones", clonesEnabled);
   if (socket.id && !cursors[socket.id]) {
     createCursor(socket.id, username, usernameColor, cursorSkin);
   }
@@ -442,6 +496,15 @@ imageEraserToggle.addEventListener("click", () => {
   setPaintTool(paintTool === "allEraser" ? "brush" : "allEraser");
 });
 laserToggle.addEventListener("click", () => setLaserMode(!laserMode));
+textToggle.addEventListener("click", () => setTextMode(!textMode));
+
+textInput.addEventListener("focus", () => setTextMode(true));
+
+cloneToggle.addEventListener("change", () => {
+  clonesEnabled = cloneToggle.checked;
+  if (hasJoined) socket.emit("setClones", clonesEnabled);
+  if (!clonesEnabled) removeCloneCursors(socket.id);
+});
 
 undoActionButton.addEventListener("click", () => {
   const action = undoStack.pop();
@@ -471,6 +534,7 @@ galleryToggle.addEventListener("click", () => {
 
 stampSelect.addEventListener("change", () => {
   if (stampSelect.value) {
+    setTextMode(false);
     setPaintMode(false);
     setLaserMode(false);
   }
@@ -572,6 +636,20 @@ async function saveCanvasSnapshot() {
     snapshotContext.restore();
   });
 
+  textHistory.forEach(item => {
+    snapshotContext.save();
+    snapshotContext.font = `600 ${item.size}px Poppins, sans-serif`;
+    snapshotContext.textAlign = "center";
+    snapshotContext.textBaseline = "middle";
+    snapshotContext.shadowColor = "rgba(0, 0, 0, 0.9)";
+    snapshotContext.shadowBlur = 2;
+    snapshotContext.shadowOffsetX = 1;
+    snapshotContext.shadowOffsetY = 1;
+    snapshotContext.fillStyle = item.color || "#ffffff";
+    snapshotContext.fillText(item.text, item.x, item.y);
+    snapshotContext.restore();
+  });
+
   snapshotContext.font = "600 14px Poppins, sans-serif";
   snapshotContext.textAlign = "center";
   snapshotContext.textBaseline = "bottom";
@@ -660,6 +738,7 @@ socket.on("connect", () => {
     socket.emit("setUsername", { name: username, color: usernameColor });
     socket.emit("setSkin", cursorSkin);
     socket.emit("setCursorSize", cursorSize);
+    socket.emit("setClones", clonesEnabled);
   }
 });
 
@@ -730,9 +809,27 @@ function createCursor(id, name, color, skin) {
   labels[id] = label;
 }
 
+function renderTextItems() {
+  document.querySelectorAll(".canvasText").forEach(item => item.remove());
+  textHistory.forEach(renderTextItem);
+}
+
+function renderTextItem(item) {
+  const div = document.createElement("div");
+  div.classList.add("canvasText");
+  div.dataset.textId = item.id;
+  div.innerText = item.text;
+  div.style.left = `${item.x}px`;
+  div.style.top = `${item.y}px`;
+  div.style.fontSize = `${item.size}px`;
+  div.style.color = item.color || "#ffffff";
+  document.body.appendChild(div);
+}
+
 function removeCursor(id) {
   if (cursors[id]) { document.body.removeChild(cursors[id]); delete cursors[id]; }
   if (labels[id]) { document.body.removeChild(labels[id]); delete labels[id]; }
+  removeCloneCursors(id);
 }
 
 // Track your cursor
@@ -745,6 +842,7 @@ document.addEventListener("mousemove", (e) => {
     cursors[socket.id].style.top = `${e.clientY}px`;
     labels[socket.id].style.left = `${e.clientX + 10}px`;
     labels[socket.id].style.top = `${e.clientY}px`;
+    updateCloneCursors(socket.id, e.clientX, e.clientY, cursorSkin, cursorSize, clonesEnabled);
   }
 
   if (laserMode) {
@@ -778,6 +876,17 @@ document.addEventListener("mousedown", (e) => {
   if (stampSelect.value) {
     socket.emit("placeStamp", {
       emoji: stampSelect.value,
+      x: e.clientX,
+      y: e.clientY,
+      size: Number(brushSizeInput.value)
+    });
+    return;
+  }
+
+  if (textMode && textInput.value.trim()) {
+    socket.emit("placeText", {
+      text: textInput.value.trim(),
+      color: brushColorInput.value,
       x: e.clientX,
       y: e.clientY,
       size: Number(brushSizeInput.value)
@@ -820,7 +929,7 @@ document.addEventListener("mouseup", () => {
 });
 
 // Update other cursors
-socket.on("cursorMove", ({ id, x, y, username, color, skin, cursorSize }) => {
+socket.on("cursorMove", ({ id, x, y, username, color, skin, cursorSize, clones }) => {
   if (!cursors[id]) createCursor(id, username, color, skin);
 
   if (cursors[id]) {
@@ -828,6 +937,7 @@ socket.on("cursorMove", ({ id, x, y, username, color, skin, cursorSize }) => {
     cursors[id].style.top = `${y}px`;
     if (skin) cursors[id].style.backgroundImage = `url(${skin})`;
     if (cursorSize) applyCursorSize(cursors[id], cursorSize);
+    updateCloneCursors(id, x, y, skin || "cursors/cursor.png", cursorSize || 28, clones);
   }
 
   if (labels[id]) {
@@ -865,6 +975,7 @@ socket.on("players", (activePlayers) => {
     if (cursors[id] && player.cursorSize) {
       applyCursorSize(cursors[id], player.cursorSize);
     }
+    if (!player.clones) removeCloneCursors(id);
   });
 
   chatRecipient.innerHTML = '<option value="">Public</option>';
@@ -916,8 +1027,10 @@ socket.on("paintStroke", (stroke) => {
 socket.on("clearPaint", () => {
   paintHistory = [];
   stampHistory = [];
+  textHistory = [];
   clearPaintCanvas();
   renderStamps();
+  renderTextItems();
 });
 
 socket.on("backgroundState", async (state) => {
@@ -926,9 +1039,11 @@ socket.on("backgroundState", async (state) => {
   backgroundFit = state?.fit || "cover";
   backgroundGallery = Array.isArray(state?.gallery) ? state.gallery : backgroundGallery;
   stampHistory = Array.isArray(state?.stamps) ? state.stamps : stampHistory;
+  textHistory = Array.isArray(state?.textItems) ? state.textItems : textHistory;
   backgroundFitSelect.value = backgroundFit;
   renderBackgroundGallery();
   renderStamps();
+  renderTextItems();
 
   if (!backgroundImageSource) {
     backgroundImageElement = null;
@@ -980,6 +1095,19 @@ socket.on("stampPlaced", (stamp) => {
   if (stamp.userId === socket.id) {
     rememberAction("stamp", stamp);
   }
+});
+
+socket.on("textPlaced", (item) => {
+  textHistory.push(item);
+  renderTextItem(item);
+  if (item.userId === socket.id) {
+    rememberAction("text", item);
+  }
+});
+
+socket.on("removeTextItem", (id) => {
+  textHistory = textHistory.filter(item => item.id !== id);
+  renderTextItems();
 });
 
 socket.on("removeStamp", (id) => {

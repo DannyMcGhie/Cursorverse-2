@@ -111,6 +111,7 @@
     #backgroundFit,
     #stampSelect,
     #reactionSelect,
+    #textInput,
     #chatRecipient {
       height: 34px;
       border: none;
@@ -119,6 +120,10 @@
       color: white;
       font-weight: 600;
       padding: 0 8px;
+    }
+
+    #textInput {
+      width: 150px;
     }
 
     #galleryTab {
@@ -174,6 +179,21 @@
       pointer-events: none;
       z-index: 2200;
       text-shadow: 1px 1px 2px black;
+    }
+
+    .canvasText {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 2200;
+      white-space: nowrap;
+      font-weight: 600;
+      text-shadow: 1px 1px 2px black;
+    }
+
+    .cursorClone {
+      opacity: 0.74;
+      z-index: 9998;
     }
 
     .reactionBubble {
@@ -507,6 +527,8 @@
     <button id="eraserToggle" type="button">Eraser</button>
     <button id="imageEraserToggle" type="button">Erase All</button>
     <button id="laserToggle" type="button">Laser</button>
+    <button id="textToggle" type="button">Text</button>
+    <input id="textInput" type="text" placeholder="Text" maxlength="80" />
     <input id="brushColor" type="color" value="#00d084" aria-label="Brush color" />
     <input id="brushSize" type="range" min="4" max="160" value="16" aria-label="Brush size" />
     <span id="brushSizeValue">16px</span>
@@ -586,6 +608,7 @@
       <button id="makeSkin" type="button">Make Your Own Skin</button>
       <button id="importSkin" type="button">Import PNG Skin</button>
       <input id="customSkinFile" type="file" accept="image/png,image/jpeg,image/webp" />
+      <label><input id="cloneToggle" type="checkbox" /> Clone cursors</label>
       <input id="cursorSize" type="range" min="12" max="160" value="28" aria-label="Cursor size" />
       <span id="cursorSizeValue">28px</span>
       <div id="skinMaker">

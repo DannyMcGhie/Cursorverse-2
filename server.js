@@ -21,11 +21,13 @@ let backgroundImage = null;
 let backgroundEraseStrokes = [];
 let backgroundFit = "cover";
 let stamps = [];
+let textItems = [];
 let backgroundGallery = [];
 const MAX_PAINT_STROKES = 1000;
 const MAX_BACKGROUND_ERASE_STROKES = 1000;
 const MAX_BACKGROUND_GALLERY_ITEMS = 12;
 const MAX_STAMPS = 500;
+const MAX_TEXT_ITEMS = 500;
 const MAX_BACKGROUND_IMAGE_LENGTH = 4500000;
 const MAX_SKIN_IMAGE_LENGTH = 2500000;
 
@@ -48,7 +50,8 @@ io.on("connection", (socket) => {
       username: sanitizeName(data.name),
       color: isValidColor(data.color) ? data.color : "#ffeb3b",
       skin: existingPlayer?.skin || "cursors/cursor.png",
-      cursorSize: existingPlayer?.cursorSize || 28
+      cursorSize: existingPlayer?.cursorSize || 28,
+      clones: existingPlayer?.clones || false
     };
     emitPlayers();
   });
@@ -66,6 +69,13 @@ io.on("connection", (socket) => {
     emitPlayers();
   });
 
+  socket.on("setClones", (enabled) => {
+    if (players[socket.id]) {
+      players[socket.id].clones = Boolean(enabled);
+    }
+    emitPlayers();
+  });
+
   // Send existing painting to new clients
   socket.emit("paintHistory", paintStrokes);
   socket.emit("backgroundState", {
@@ -73,6 +83,7 @@ io.on("connection", (socket) => {
     eraseStrokes: backgroundEraseStrokes,
     fit: backgroundFit,
     stamps,
+    textItems,
     gallery: backgroundGallery
   });
 
@@ -86,6 +97,7 @@ io.on("connection", (socket) => {
         username: players[socket.id].username,
         color: players[socket.id].color,
         cursorSize: players[socket.id].cursorSize || 28,
+        clones: Boolean(players[socket.id].clones),
         skin: players[socket.id].skin || "cursors/cursor.png" // ✅ fixed fallback path
       });
     }
@@ -141,6 +153,7 @@ io.on("connection", (socket) => {
     if (!players[socket.id]) return;
     paintStrokes = [];
     stamps = [];
+    textItems = [];
     io.emit("clearPaint");
   });
 
@@ -155,6 +168,11 @@ io.on("connection", (socket) => {
     if (action.type === "backgroundErase") {
       backgroundEraseStrokes = backgroundEraseStrokes.filter(stroke => !(stroke.id === action.id && stroke.userId === socket.id));
       io.emit("removeBackgroundEraseStroke", action.id);
+    }
+
+    if (action.type === "text") {
+      textItems = textItems.filter(item => !(item.id === action.id && item.userId === socket.id));
+      io.emit("removeTextItem", action.id);
     }
 
     if (action.type === "allErase") {
@@ -218,6 +236,15 @@ io.on("connection", (socket) => {
       stamps.push(stamp);
       io.emit("stampPlaced", stamp);
     }
+
+    if (action.type === "text" && isValidTextItem(action.item)) {
+      const textItem = {
+        ...action.item,
+        userId: socket.id
+      };
+      textItems.push(textItem);
+      io.emit("textPlaced", textItem);
+    }
   });
 
   socket.on("setBackground", (image) => {
@@ -230,6 +257,7 @@ io.on("connection", (socket) => {
       eraseStrokes: backgroundEraseStrokes,
       fit: backgroundFit,
       stamps,
+      textItems,
       gallery: backgroundGallery
     });
   });
@@ -246,6 +274,7 @@ io.on("connection", (socket) => {
       eraseStrokes: backgroundEraseStrokes,
       fit: backgroundFit,
       stamps,
+      textItems,
       gallery: backgroundGallery
     });
   });
@@ -259,6 +288,7 @@ io.on("connection", (socket) => {
       eraseStrokes: backgroundEraseStrokes,
       fit: backgroundFit,
       stamps,
+      textItems,
       gallery: backgroundGallery
     });
   });
@@ -305,6 +335,27 @@ io.on("connection", (socket) => {
     }
 
     io.emit("stampPlaced", savedStamp);
+  });
+
+  socket.on("placeText", (textItem) => {
+    if (!players[socket.id] || !isValidTextItem(textItem)) return;
+
+    const savedText = {
+      id: `${socket.id}-text-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      userId: socket.id,
+      text: textItem.text.trim().slice(0, 80),
+      color: isValidColor(textItem.color) ? textItem.color : players[socket.id].color,
+      x: textItem.x,
+      y: textItem.y,
+      size: textItem.size
+    };
+
+    textItems.push(savedText);
+    if (textItems.length > MAX_TEXT_ITEMS) {
+      textItems = textItems.slice(-MAX_TEXT_ITEMS);
+    }
+
+    io.emit("textPlaced", savedText);
   });
 
   socket.on("reaction", (reaction) => {
@@ -433,6 +484,23 @@ function isValidStamp(stamp) {
     stamp.size <= 160 &&
     Number.isFinite(stamp.x) &&
     Number.isFinite(stamp.y)
+  );
+}
+
+function isValidTextItem(textItem) {
+  return (
+    textItem &&
+    typeof textItem.text === "string" &&
+    textItem.text.trim().length > 0 &&
+    textItem.text.trim().length <= 80 &&
+    typeof textItem.x === "number" &&
+    typeof textItem.y === "number" &&
+    typeof textItem.size === "number" &&
+    textItem.size >= 16 &&
+    textItem.size <= 160 &&
+    Number.isFinite(textItem.x) &&
+    Number.isFinite(textItem.y) &&
+    (!textItem.color || isValidColor(textItem.color))
   );
 }
 
