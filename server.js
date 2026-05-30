@@ -6,7 +6,7 @@ const os = require("os");
 const app = express();
 const server = http.createServer(app);
 const io = socketIO(server, {
-  maxHttpBufferSize: 5e6
+  maxHttpBufferSize: 15e6
 });
 
 const PORT = process.env.PORT || 3000;
@@ -28,8 +28,8 @@ const MAX_BACKGROUND_ERASE_STROKES = 1000;
 const MAX_BACKGROUND_GALLERY_ITEMS = 12;
 const MAX_STAMPS = 500;
 const MAX_TEXT_ITEMS = 500;
-const MAX_BACKGROUND_IMAGE_LENGTH = 4500000;
-const MAX_SKIN_IMAGE_LENGTH = 2500000;
+const MAX_BACKGROUND_IMAGE_LENGTH = 12000000;
+const MAX_SKIN_IMAGE_LENGTH = 6000000;
 
 io.on("connection", (socket) => {
   console.log("New client connected");
@@ -176,9 +176,7 @@ io.on("connection", (socket) => {
     }
 
     if (action.type === "allErase") {
-      backgroundEraseStrokes = backgroundEraseStrokes.filter(stroke => !(stroke.id === action.id && stroke.userId === socket.id));
       paintStrokes = paintStrokes.filter(stroke => !(stroke.id === action.paintId && stroke.userId === socket.id));
-      io.emit("removeBackgroundEraseStroke", action.id);
       io.emit("removePaintStroke", action.paintId);
     }
 
@@ -210,22 +208,17 @@ io.on("connection", (socket) => {
     }
 
     if (action.type === "allErase" && isValidBackgroundEraseStroke(action.item)) {
-      const backgroundStroke = {
-        ...action.item,
-        userId: socket.id
-      };
       const paintStroke = {
         ...action.item,
-        id: action.item.paintId || `${backgroundStroke.id}-paint`,
+        id: action.item.paintId || `${action.item.id}-paint`,
         paintId: undefined,
         userId: socket.id,
         color: "#000000",
         tool: "eraser"
       };
-      backgroundEraseStrokes.push(backgroundStroke);
       paintStrokes.push(paintStroke);
-      io.emit("backgroundEraseStroke", backgroundStroke);
       io.emit("paintStroke", paintStroke);
+      removeItemsInEraseZone(action.item);
     }
 
     if (action.type === "stamp" && isValidStamp(action.item)) {
@@ -252,6 +245,19 @@ io.on("connection", (socket) => {
     backgroundImage = image;
     backgroundEraseStrokes = [];
     addBackgroundToGallery(image);
+    io.emit("backgroundState", {
+      image: backgroundImage,
+      eraseStrokes: backgroundEraseStrokes,
+      fit: backgroundFit,
+      stamps,
+      textItems,
+      gallery: backgroundGallery
+    });
+  });
+
+  socket.on("cameraFrame", (image) => {
+    if (!players[socket.id] || !isValidBackgroundImage(image)) return;
+    backgroundImage = image;
     io.emit("backgroundState", {
       image: backgroundImage,
       eraseStrokes: backgroundEraseStrokes,
@@ -428,6 +434,35 @@ function addBackgroundToGallery(image) {
     addedAt: Date.now()
   });
   backgroundGallery = backgroundGallery.slice(0, MAX_BACKGROUND_GALLERY_ITEMS);
+}
+
+function removeItemsInEraseZone(stroke) {
+  const removedStampIds = [];
+  const removedTextIds = [];
+  const radius = stroke.size / 2;
+
+  stamps = stamps.filter(stamp => {
+    const hit = stroke.points.some(point => distance(point, stamp) <= radius + stamp.size / 2);
+    if (hit) removedStampIds.push(stamp.id);
+    return !hit;
+  });
+
+  textItems = textItems.filter(item => {
+    const approximateWidth = item.text.length * item.size * 0.6;
+    const hit = stroke.points.some(point => (
+      Math.abs(point.x - item.x) <= approximateWidth / 2 + radius &&
+      Math.abs(point.y - item.y) <= item.size / 2 + radius
+    ));
+    if (hit) removedTextIds.push(item.id);
+    return !hit;
+  });
+
+  removedStampIds.forEach(id => io.emit("removeStamp", id));
+  removedTextIds.forEach(id => io.emit("removeTextItem", id));
+}
+
+function distance(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
 function isValidStroke(stroke) {
